@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>For Sarona</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .full-page-image {
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+        .full-page-image .content {
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+        .full-page-image.visible .content {
+            opacity: 1;
+        }
+        .static-full-page-image .content {
+            opacity: 1 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="full-page-image static-full-page-image" style="background-image: url('images/jewel_290125.jpg');">
+        <div class="content">
+            <h1>Some random things I love about my girlfriend</h1>
+            <p>Lovingly made by Rafael.</p>
+        </div>
+    </div>
+    <div class="full-page-image" style="background-image: url('images/bridge_180125.jpg');">
+        <div class="content">
+            <h2>She is curious</h2>
+            <p>Everytime we're outside, and we see something interesting, she takes the time to carefully look at it with wonder.</p>
+        </div>
+    </div>
+    <div class="full-page-image" style="background-image: url('images/window_190125.jpg');">
+        <div class="content">
+            <h2>She is cute</h2>
+            <p>Her childlike outlook of the world never fails to bring a smile to my face.</p>
+        </div>
+    </div>
+    <div class="full-page-image" style="background-image: url('images/sunflower_060225.jpg');">
+        <div class="content">
+            <h2>She brings light to my world</h2>
+            <p>Like sunflowers, she is the symbol of warmth and light. Billions of years from now, people will look at the sky and see the vibrant marriage of our Milky Way Galaxy and the Andromeda Galaxy. It will look spectacular and awesome. But one thing they will miss is this beautiful ray of Sunshine living here in the present.</p>
+        </div>
+    </div>
+    <div class="full-page-image" style="background-image: url('images/lasagna_150225.jpg');">
+        <div class="content">
+            <h2>She loves me</h2>
+            <p>Her love is as beautiful as the break of dawn. With each day that passes, I see why God sent her to me. And I love her with all my heart.</p>
+        </div>
+    </div>
+    <!-- Add more sections as needed -->
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script>
+        document.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('.full-page-image');
+            const triggerBottom = window.innerHeight / 5 * 4;
+
+            sections.forEach(section => {
+                const sectionTop = section.getBoundingClientRect().top;
+
+                if (sectionTop < triggerBottom) {
+                    section.classList.add('visible');
+                } else {
+                    section.classList.remove('visible');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
