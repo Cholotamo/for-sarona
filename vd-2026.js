@@ -5,6 +5,10 @@ import { OrbitControls } from "https://cdn.skypack.dev/three@0.129.0/examples/js
 // To allow for importing the .gltf file
 import { GLTFLoader } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/loaders/GLTFLoader.js";
 
+let velocity = new THREE.Vector3(0, 0, 0);
+let gravity = new THREE.Vector3(0, -0.02, 0);
+let tilt = { x: 0, y: 0 };
+
 //Create a Three.JS Scene
 const scene = new THREE.Scene();
 //create a new camera with positions and angles
@@ -68,17 +72,81 @@ if (objToRender === "heart") {
   controls = new OrbitControls(camera, renderer.domElement);
 }
 
+function enableMotion() {
+
+  window.addEventListener("deviceorientation", (e) => {
+
+    if (!object) return;
+
+    // Left-right tilt
+    tilt.x = e.gamma / 30;
+
+    // Front-back tilt
+    tilt.y = e.beta / 30;
+  });
+
+}
+
+
+// iPhone permission
+if (
+  typeof DeviceMotionEvent !== "undefined" &&
+  typeof DeviceMotionEvent.requestPermission === "function"
+) {
+
+  const btn = document.getElementById("motionBtn");
+  btn.style.display = "block";
+
+  btn.addEventListener("click", async () => {
+
+    const permission = await DeviceMotionEvent.requestPermission();
+
+    if (permission === "granted") {
+      enableMotion();
+      btn.remove();
+    }
+  });
+
+} else {
+  // Android / others
+  enableMotion();
+}
+
 //Render the scene
 function animate() {
   requestAnimationFrame(animate);
-  //Here we could add some code to update the scene, adding some automatic movement
 
-  //Make the eye move
-  if (object && objToRender === "eye") {
-    //I've played with the constants here until it looked good 
-    object.rotation.y = -3 + mouseX / window.innerWidth * 3;
-    object.rotation.x = -1.2 + mouseY * 2.5 / window.innerHeight;
+  if (object && objToRender === "heart") {
+
+    // Apply tilt as gravity direction
+    gravity.x = tilt.x;
+    gravity.y = -0.02 + tilt.y;
+
+    // Add gravity
+    velocity.add(gravity);
+
+    // Move heart
+    object.position.add(velocity);
+
+    // Floor collision
+    if (object.position.y < -40) {
+      object.position.y = -40;
+      velocity.y *= -0.6; // bounce
+    }
+
+    // Wall limits
+    if (Math.abs(object.position.x) > 60) {
+      velocity.x *= -0.6;
+    }
+
+    if (Math.abs(object.position.z) > 60) {
+      velocity.z *= -0.6;
+    }
+
+    // Friction
+    velocity.multiplyScalar(0.98);
   }
+
   renderer.render(scene, camera);
 }
 
