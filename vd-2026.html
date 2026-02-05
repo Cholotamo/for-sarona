@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>For Sarona - Valentine's Day 2026</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cedarville+Cursive&display=swap" rel="stylesheet">
+    <style>
+        body {
+        margin: 0;
+        font-family: "Montserrat", sans-serif;
+        background-color: #F0EADC;
+        }
+        #container3D canvas {
+        width: 100vw !important;
+        height: 100vh !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+        }
+        /* Floating nav handle (small, almost invisible) */
+        .floating-nav-toggle {
+        position: fixed;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 140px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        z-index: 2000;
+        outline: none;
+        }
+        .floating-nav-toggle::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 6px;
+        height: 80px;
+        background: rgba(255,255,255,0.04); /* nearly invisible */
+        border-radius: 3px;
+        transition: background 160ms;
+        }
+        /* Nav panel hidden off-screen */
+        .floating-nav {
+        position: fixed;
+        right: -280px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 260px;
+        background: rgba(0,0,0,0.64);
+        color: #fff;
+        padding: 12px;
+        border-radius: 8px 0 0 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        transition: right 240ms ease, opacity 240ms ease;
+        opacity: 0;
+        z-index: 1999;
+        }
+        /* Reveal on hover/focus or when JS toggles .open */
+        .floating-nav-toggle:hover::before,
+        .floating-nav-toggle:focus::before {
+        background: rgba(255,255,255,0.36);
+        }
+        .floating-nav-toggle:hover + .floating-nav,
+        .floating-nav:hover,
+        .floating-nav.open {
+        right: 20px;
+        opacity: 1;
+        }
+        /* Links */
+        .floating-nav a {
+        color: #fff;
+        display: block;
+        padding: 8px 6px;
+        text-decoration: none;
+        }
+        .floating-nav a:hover { text-decoration: underline; }
+        html, body, main {
+        height: 100%;
+        }
+        #message {
+        font-family: "Cedarville Cursive", cursive;
+        font-weight: 400;
+        font-style: normal;
+        font-size: 50px;
+        padding: 30px;
+        }  
+    </style>
+</head>
+<body>
+    <button class="floating-nav-toggle" aria-label="Open navigation" title="Navigation" tabindex="0"></button>
+    <nav class="floating-nav" aria-label="Site navigation">
+    <ul class="nav flex-column">
+        <li class="nav-item"><a class="nav-link" href="home.html">Home</a></li>
+        <li class="nav-item"><a class="nav-link" href="vd-2026.html">Valentine's Day 2026</a></li>
+    </ul>
+    </nav>
+    <main>
+      <div id="message" style="padding-bottom: 0;">Dear Sarona,</div>
+      <div id="message" style="padding-top:0; padding-bottom: 0;">I want you to be my Valentine.</div>
+      <div id="message" style="padding-top:0; padding-bottom: 0;">You're such a delight to be</div>
+      <div id="message" style="padding-top:0; padding-bottom: 0;">around and your smiles bring</div>
+      <div id="message" style="padding-top:0; padding-bottom: 0;">me such joy. I have something nice planned for us, I'm looking</div>
+      <div id="message" style="padding-top:0; padding-bottom: 0;">forward to sharing that day with you.</div>
+      <div id="message" style="padding-bottom: 0;">Love,</div>
+      <div id="message" style="padding-top:0; padding-bottom: 0;">Rafael</div>
+      <div id="container3D"></div>
+    </main>
+    <script type="module" src="/vd-2026.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+        const toggle = document.querySelector('.floating-nav-toggle');
+        const nav = document.querySelector('.floating-nav');
+        toggle.addEventListener('click', (e) => {
+            nav.classList.toggle('open');
+        });
+        document.addEventListener('click', (e) => {
+            if (!nav.contains(e.target) && !toggle.contains(e.target)) {
+            nav.classList.remove('open');
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') nav.classList.remove('open');
+        });
+        });
+    </script>
+</body>
+</html>

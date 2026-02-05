@@ -7,6 +7,70 @@
     <!-- Bootstrap CSS -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        /* Floating nav handle (small, almost invisible) */
+        .floating-nav-toggle {
+        position: fixed;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 140px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        z-index: 2000;
+        outline: none;
+        }
+        .floating-nav-toggle::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 6px;
+        height: 80px;
+        background: rgba(255,255,255,0.04); /* nearly invisible */
+        border-radius: 3px;
+        transition: background 160ms;
+        }
+
+        /* Nav panel hidden off-screen */
+        .floating-nav {
+        position: fixed;
+        right: -280px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 260px;
+        background: rgba(0,0,0,0.64);
+        color: #fff;
+        padding: 12px;
+        border-radius: 8px 0 0 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        transition: right 240ms ease, opacity 240ms ease;
+        opacity: 0;
+        z-index: 1999;
+        }
+
+        /* Reveal on hover/focus or when JS toggles .open */
+        .floating-nav-toggle:hover::before,
+        .floating-nav-toggle:focus::before {
+        background: rgba(255,255,255,0.36);
+        }
+        .floating-nav-toggle:hover + .floating-nav,
+        .floating-nav:hover,
+        .floating-nav.open {
+        right: 20px;
+        opacity: 1;
+        }
+
+        /* Links */
+        .floating-nav a {
+        color: #fff;
+        display: block;
+        padding: 8px 6px;
+        text-decoration: none;
+        }
+        .floating-nav a:hover { text-decoration: underline; }        
         .full-page-image {
             background-size: cover;
             background-position: center;
@@ -33,6 +97,13 @@
     </style>
 </head>
 <body>
+    <button class="floating-nav-toggle" aria-label="Open navigation" title="Navigation" tabindex="0"></button>
+    <nav class="floating-nav" aria-label="Site navigation">
+    <ul class="nav flex-column">
+        <li class="nav-item"><a class="nav-link" href="#top">Home</a></li>
+        <li class="nav-item"><a class="nav-link" href="vd-2026.html">Valentine's Day 2026</a></li>
+    </ul>
+    </nav>
     <div class="full-page-image static-full-page-image" style="background-image: url('images/jewel_290125.jpg');">
         <div class="content">
             <h1>Some random things I love about my girlfriend</h1>
@@ -69,6 +140,27 @@
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script>
+        document.addEventListener('DOMContentLoaded', function () {
+        const toggle = document.querySelector('.floating-nav-toggle');
+        const nav = document.querySelector('.floating-nav');
+
+        // Toggle for touch/click devices
+        toggle.addEventListener('click', (e) => {
+            nav.classList.toggle('open');
+        });
+
+        // Close when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!nav.contains(e.target) && !toggle.contains(e.target)) {
+            nav.classList.remove('open');
+            }
+        });
+
+        // Allow keyboard escape to close
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') nav.classList.remove('open');
+        });
+        });
         document.addEventListener('scroll', function() {
             const sections = document.querySelectorAll('.full-page-image');
             const triggerBottom = window.innerHeight / 5 * 4;
