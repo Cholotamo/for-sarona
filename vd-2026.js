@@ -8,7 +8,7 @@ import { GLTFLoader } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/l
 let velocity = new THREE.Vector3(0, 0, 0);
 let gravity = new THREE.Vector3(0, -0.02, 0);
 let tilt = { x: 0, y: 0 };
-
+let angularVelocity = new THREE.Vector3(0, 0, 0);
 //Create a Three.JS Scene
 const scene = new THREE.Scene();
 //create a new camera with positions and angles
@@ -118,33 +118,58 @@ function animate() {
 
   if (object && objToRender === "heart") {
 
-    // Apply tilt as gravity direction
+    /* ---------- Gravity from tilt ---------- */
     gravity.x = tilt.x;
     gravity.y = -0.02 + tilt.y;
 
-    // Add gravity
+    /* ---------- Linear motion ---------- */
     velocity.add(gravity);
-
-    // Move heart
     object.position.add(velocity);
 
-    // Floor collision
+    /* ---------- Floor collision ---------- */
     if (object.position.y < -40) {
       object.position.y = -40;
-      velocity.y *= -0.6; // bounce
+
+      // Bounce
+      velocity.y *= -0.5;
+
+      // Add rolling from sideways movement
+      angularVelocity.x += velocity.z * 0.002;
+      angularVelocity.z -= velocity.x * 0.002;
     }
 
-    // Wall limits
-    if (Math.abs(object.position.x) > 60) {
+    /* ---------- Wall collisions ---------- */
+    const limit = 60;
+
+    // X walls
+    if (Math.abs(object.position.x) > limit) {
+      object.position.x = Math.sign(object.position.x) * limit;
+
       velocity.x *= -0.6;
+
+      // Spin from wall hit
+      angularVelocity.y += velocity.z * 0.003;
+      angularVelocity.z += velocity.y * 0.003;
     }
 
-    if (Math.abs(object.position.z) > 60) {
+    // Z walls
+    if (Math.abs(object.position.z) > limit) {
+      object.position.z = Math.sign(object.position.z) * limit;
+
       velocity.z *= -0.6;
+
+      angularVelocity.x += velocity.y * 0.003;
+      angularVelocity.y += velocity.x * 0.003;
     }
 
-    // Friction
-    velocity.multiplyScalar(0.98);
+    /* ---------- Apply rotation ---------- */
+    object.rotation.x += angularVelocity.x;
+    object.rotation.y += angularVelocity.y;
+    object.rotation.z += angularVelocity.z;
+
+    /* ---------- Friction ---------- */
+    velocity.multiplyScalar(0.985);
+    angularVelocity.multiplyScalar(0.97);
   }
 
   renderer.render(scene, camera);
