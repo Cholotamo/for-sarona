@@ -82,7 +82,7 @@ function enableMotion() {
     tilt.x = e.gamma / 30;
 
     // Front-back tilt
-    tilt.y = e.beta / 30;
+    tilt.y = -e.beta / 30;
   });
 
 }
