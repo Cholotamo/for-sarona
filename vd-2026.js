@@ -251,38 +251,14 @@ function handleDeviceOrientation(e) {
 
     // Gravity Vector
     // Keep a strong -Y component so it stays on floor
+    // User requested "Invert direction of tilting forwards and backwards".
+    // Currently code is `-gravityZ`. If we want to invert it, we use `+gravityZ`.
     const gravityY = -15;
     const gravityX = xRatio * CONFIG.gravityScale;
-
-    // Inverted Z based on user feedback
-    // "Tilt Away" (Positive Beta) was rolling "Down" (+Z) -> We want it to roll "Up" (-Z)
-    // So Positive Beta should produce -Z Gravity. 
-    // Previous Code: `world.gravity.set(..., -gravityZ)` where gravityZ = zRatio*Scale.
-    // If zRatio is +, gravity is -Z. This SHOULD have worked for "Up".
-    // If user says "it rolls to bottom" (+Z), then my previous logic resulted in +Z force.
-    // So let's flip the sign of the Z component passed to set().
-    // If Beta is +, we want -Z force.
-    // Let's try flipping the sign.
     const gravityZ = zRatio * CONFIG.gravityScale;
 
-    // If "Tilt Away" (Beta > 0) -> we want -Z force.
-    // If "Tilt Inward" (Beta < 0) -> we want +Z force.
-    // Let's explicitly set the signs to avoid confusion.
-
-    // User reported: "Tilting phone away... rolls to bottom (+Z)".
-    // So currently Beta > 0 => Force +Z. 
-    // We want Beta > 0 => Force -Z.
-    // So simply flipping the sign of the Z argument fix it.
-
+    // Invert Z from previous state
     world.gravity.set(gravityX, gravityY, gravityZ);
-    // Wait, if gravityZ is positive (Beta > 0), passing it as +Z moves it to Bottom.
-    // Wait, previous code was `world.gravity.set(gravityX, gravityY, -gravityZ);`
-    // So Beta > 0 -> -Gravity -> Force -Z (Up).
-    // User said that rolled to Bottom. That implies either Beta IS NEGATIVE when tilting away (Android vs iOS difference?) or Camera is flipped.
-    // Regardless, if it was going wrong way, we just flip the sign.
-    // Previous: -gravityZ. New: +gravityZ.
-    // Let's just use `gravityZ` directly if it was inverted before.
-
 }
 
 // Enable Motion Permission (iOS 13+)
@@ -313,7 +289,12 @@ if (btn) {
                 const x = (e.clientX / window.innerWidth) * 2 - 1;
                 const y = (e.clientY / window.innerHeight) * 2 - 1;
                 // Move Right (x>0) -> Gravity +X
-                // Move Up (y<0) -> Gravity -Z (Roll Up)
+                // Move Up (y<0) -> Beta < 0 -> GravityZ < 0 -> Force +Z (Down) if using +Z mapping
+                // If we want inverted: Move Up (y<0) -> Should Roll Up (-Z).
+                // If mapping is +gravityZ, and y scales with Beta:
+                // y negative (Mouse Up) -> Beta negative -> gravityZ negative.
+                // Output: gravity Z negative. Force is -Z. Object rolls Up.
+                // So +gravityZ mapping seems to match "Mouse Up -> Roll Up".
                 world.gravity.set(x * 25, -15, y * 25);
             });
         }
@@ -334,15 +315,17 @@ function animate(time) {
     const dt = (time - lastTime) / 1000;
 
     // Step physics
+    // fixed time step is better for stability
     world.fixedStep();
 
     // Sync Visuals
     if (heartBody && heartMesh) {
-        // heartMesh is now our visualRoot group
         heartMesh.position.copy(heartBody.position);
         heartMesh.quaternion.copy(heartBody.quaternion);
     }
 
+    renderer.render(scene, camera);
+    lastTime = time;
 }
 
 // Start
