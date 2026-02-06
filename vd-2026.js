@@ -1,192 +1,181 @@
-//Import the THREE.js library
 import * as THREE from "https://cdn.skypack.dev/three@0.129.0/build/three.module.js";
-// To allow for the camera to move around the scene
-import { OrbitControls } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/controls/OrbitControls.js";
-// To allow for importing the .gltf file
 import { GLTFLoader } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/loaders/GLTFLoader.js";
+// Import Cannon-es (the modern fork of cannon.js)
+import * as CANNON from "https://cdn.skypack.dev/cannon-es@0.19.0";
 
-let velocity = new THREE.Vector3(0, 0, 0);
-let gravity = new THREE.Vector3(0, -0.02, 0);
-let tilt = { x: 0, y: 0 };
-let angularVelocity = new THREE.Vector3(0, 0, 0);
-//Create a Three.JS Scene
+// --- Configuration ---
+const WALL_LIMIT = 60;
+const FLOOR_LEVEL = -40;
+
+// --- Physics Setup ---
+const world = new CANNON.World();
+world.gravity.set(0, -20, 0); // Stronger gravity for the larger scale of the scene
+
+// Materials (optional: makes things bounce/slide nicely)
+const defaultMaterial = new CANNON.Material('default');
+const defaultContactMaterial = new CANNON.ContactMaterial(defaultMaterial, defaultMaterial, {
+  friction: 0.3,
+  restitution: 0.7, // Bounciness
+});
+world.addContactMaterial(defaultContactMaterial);
+
+// 1. Create the Physics Body for the Object (Sphere approximation)
+const sphereShape = new CANNON.Sphere(10); // Radius approx 10 (adjust based on model size)
+const objectBody = new CANNON.Body({
+  mass: 1, // Mass > 0 makes it dynamic
+  shape: sphereShape,
+  material: defaultMaterial,
+  linearDamping: 0.4, // Air resistance simulation
+  angularDamping: 0.4
+});
+objectBody.position.set(0, 0, 0);
+world.addBody(objectBody);
+
+// 2. Create Static Boundaries (Floor & Walls)
+function createBoundary(position, quaternion) {
+  const body = new CANNON.Body({
+    mass: 0, // Mass 0 makes it static (immovable)
+    material: defaultMaterial
+  });
+  body.addShape(new CANNON.Plane());
+  body.position.copy(position);
+  body.quaternion.copy(quaternion);
+  world.addBody(body);
+}
+
+// Floor (Pointing up)
+const qFloor = new CANNON.Quaternion();
+qFloor.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+createBoundary(new CANNON.Vec3(0, FLOOR_LEVEL, 0), qFloor);
+
+// Wall: Right (+X) - Normal pointing Left
+const qRight = new CANNON.Quaternion();
+qRight.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -Math.PI / 2);
+createBoundary(new CANNON.Vec3(WALL_LIMIT, 0, 0), qRight);
+
+// Wall: Left (-X) - Normal pointing Right
+const qLeft = new CANNON.Quaternion();
+qLeft.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
+createBoundary(new CANNON.Vec3(-WALL_LIMIT, 0, 0), qLeft);
+
+// Wall: Back (-Z) - Normal pointing Forward
+// (Note: Limit Z motion if desired, otherwise standard plane)
+const qBack = new CANNON.Quaternion();
+createBoundary(new CANNON.Vec3(0, 0, -WALL_LIMIT), new CANNON.Quaternion()); // Default normal is +Z
+
+// Wall: Front (+Z) - Normal pointing Backward
+const qFront = new CANNON.Quaternion();
+qFront.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI); // Rotate 180 to face -Z
+createBoundary(new CANNON.Vec3(0, 0, WALL_LIMIT), qFront);
+
+
+// --- Three.js Setup ---
 const scene = new THREE.Scene();
-//create a new camera with positions and angles
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.z = 250;
 
-//Keep track of the mouse position, so we can make the eye move
-let mouseX = window.innerWidth / 2;
-let mouseY = window.innerHeight / 2;
+const renderer = new THREE.WebGLRenderer({ alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.getElementById("container3D").appendChild(renderer.domElement);
 
-//Keep the 3D object on a global variable so we can access it later
-let object;
+// Lighting
+const topLight = new THREE.DirectionalLight(0xffffff, 1);
+topLight.position.set(500, 500, 500);
+topLight.castShadow = true;
+scene.add(topLight);
 
-//OrbitControls allow the camera to move around the scene
-let controls;
+const ambientLight = new THREE.AmbientLight(0x333333, 5);
+scene.add(ambientLight);
 
-//Set which object to render
+// Load Model
+let renderMesh;
 let objToRender = 'heart';
-
-//Instantiate a loader for the .gltf file
 const loader = new GLTFLoader();
 
-//Load the file
 loader.load(
   `./models/${objToRender}/scene.gltf`,
   function (gltf) {
-    //If the file is loaded, add it to the scene
-    object = gltf.scene;
-    scene.add(object);
+    renderMesh = gltf.scene;
+    scene.add(renderMesh);
+    
+    // Optional: Scale mesh to fit physics body if needed
+    // renderMesh.scale.set(10, 10, 10); 
   },
   function (xhr) {
-    //While it is loading, log the progress
     console.log((xhr.loaded / xhr.total * 100) + '% loaded');
   },
   function (error) {
-    //If there is an error, log it
     console.error(error);
   }
 );
 
-//Instantiate a new renderer and set its size
-const renderer = new THREE.WebGLRenderer({ alpha: true }); //Alpha: true allows for the transparent background
-renderer.setSize(window.innerWidth, window.innerHeight);
 
-//Add the renderer to the DOM
-document.getElementById("container3D").appendChild(renderer.domElement);
-
-//Set how far the camera will be from the 3D model
-camera.position.z = objToRender === "dino" ? 25 : 250;
-
-//Add lights to the scene, so we can actually see the 3D model
-const topLight = new THREE.DirectionalLight(0xffffff, 1); // (color, intensity)
-topLight.position.set(500, 500, 500) //top-left-ish
-topLight.castShadow = true;
-scene.add(topLight);
-
-const ambientLight = new THREE.AmbientLight(0x333333, objToRender === "dino" ? 5 : 1);
-scene.add(ambientLight);
-
-//This adds controls to the camera, so we can rotate / zoom it with the mouse
-if (objToRender === "heart") {
-  controls = new OrbitControls(camera, renderer.domElement);
-}
-
+// --- Motion Control ---
 function enableMotion() {
-
   window.addEventListener("deviceorientation", (e) => {
+    // Instead of adding velocity manually, we change the world gravity direction.
+    // This simulates the "box" tilting.
+    
+    const gravityStrength = 30; // Maximum gravity force
+    
+    // Convert degrees to radians approximation
+    const xTilt = (e.gamma || 0) / 45; // Left/Right
+    const yTilt = (e.beta || 0) / 45;  // Front/Back
 
-    if (!object) return;
-
-    // Left-right tilt
-    tilt.x = e.gamma / 30;
-
-    // Front-back tilt
-    tilt.y = -e.beta / 30;
+    // Update Physics World Gravity
+    // Note: Cannon uses x, y, z. 
+    // y is usually "up". So tilt affects X (left/right) and Z (depth) gravity, 
+    // or X and Y if you view it purely 2D.
+    // Based on your camera setup:
+    world.gravity.x = xTilt * gravityStrength;
+    world.gravity.y = -20 + (Math.abs(yTilt) * -10); // Keep downward pull, adjust slightly
+    // If you want front/back tilt to move it in Z depth:
+    // world.gravity.z = -yTilt * gravityStrength; 
+    
+    // If you want front/back tilt to move it Up/Down (2D platformer style):
+    // world.gravity.y = -20 + (-yTilt * gravityStrength);
   });
-
 }
 
-
-// iPhone permission
-if (
-  typeof DeviceMotionEvent !== "undefined" &&
-  typeof DeviceMotionEvent.requestPermission === "function"
-) {
-
+// Permissions handling
+if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
   const btn = document.getElementById("motionBtn");
   btn.style.display = "block";
-
   btn.addEventListener("click", async () => {
-
     const permission = await DeviceMotionEvent.requestPermission();
-
     if (permission === "granted") {
       enableMotion();
       btn.remove();
     }
   });
-
 } else {
-  // Android / others
   enableMotion();
 }
 
-//Render the scene
+
+// --- Animation Loop ---
+const timeStep = 1 / 60; // Sync physics to 60fps
+
 function animate() {
   requestAnimationFrame(animate);
 
-  if (object && objToRender === "heart") {
+  // 1. Step the physics world
+  world.step(timeStep);
 
-    /* ---------- Gravity from tilt ---------- */
-    gravity.x = tilt.x;
-    gravity.y = -0.02 + tilt.y;
-
-    /* ---------- Linear motion ---------- */
-    velocity.add(gravity);
-    object.position.add(velocity);
-
-    /* ---------- Floor collision ---------- */
-    if (object.position.y < -40) {
-      object.position.y = -40;
-
-      // Bounce
-      velocity.y *= -0.5;
-
-      // Add rolling from sideways movement
-      angularVelocity.x += velocity.z * 0.002;
-      angularVelocity.z -= velocity.x * 0.002;
-    }
-
-    /* ---------- Wall collisions ---------- */
-    const limit = 60;
-
-    // X walls
-    if (Math.abs(object.position.x) > limit) {
-      object.position.x = Math.sign(object.position.x) * limit;
-
-      velocity.x *= -0.6;
-
-      // Spin from wall hit
-      angularVelocity.y += velocity.z * 0.003;
-      angularVelocity.z += velocity.y * 0.003;
-    }
-
-    // Z walls
-    if (Math.abs(object.position.z) > limit) {
-      object.position.z = Math.sign(object.position.z) * limit;
-
-      velocity.z *= -0.6;
-
-      angularVelocity.x += velocity.y * 0.003;
-      angularVelocity.y += velocity.x * 0.003;
-    }
-
-    /* ---------- Apply rotation ---------- */
-    object.rotation.x += angularVelocity.x;
-    object.rotation.y += angularVelocity.y;
-    object.rotation.z += angularVelocity.z;
-
-    /* ---------- Friction ---------- */
-    velocity.multiplyScalar(0.985);
-    angularVelocity.multiplyScalar(0.97);
+  // 2. Sync Three.js mesh to Cannon.js body
+  if (renderMesh) {
+    renderMesh.position.copy(objectBody.position);
+    renderMesh.quaternion.copy(objectBody.quaternion);
   }
 
   renderer.render(scene, camera);
 }
 
-//Add a listener to the window, so we can resize the window and the camera
+// Resize handler
 window.addEventListener("resize", function () {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-//add mouse position listener, so we can make the eye move
-document.onmousemove = (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-}
-
-//Start the 3D rendering
 animate();
