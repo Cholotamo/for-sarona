@@ -200,10 +200,10 @@ function loadModel() {
 
             // Add Debug Wireframe Sphere (Visualizing the collider)
             const radius = 1.0;
-            const debugGeo = new THREE.SphereGeometry(radius, 16, 16);
-            const debugMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 });
-            const debugMesh = new THREE.Mesh(debugGeo, debugMat);
-            visualRoot.add(debugMesh);
+            // const debugGeo = new THREE.SphereGeometry(radius, 16, 16);
+            // const debugMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 });
+            // const debugMesh = new THREE.Mesh(debugGeo, debugMat);
+            // visualRoot.add(debugMesh);
 
             scene.add(visualRoot);
             heartMesh = visualRoot; // The animation loop will sync this group to physics
