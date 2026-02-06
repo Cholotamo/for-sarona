@@ -50,6 +50,13 @@ async function init() {
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
+    // Fix shadow clipping by expanding the shadow camera frustum
+    const d = 50;
+    dirLight.shadow.camera.left = -d;
+    dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d;
+    dirLight.shadow.camera.bottom = -d;
+    dirLight.shadow.bias = -0.0001; // Reduce shadow acne
     scene.add(dirLight);
 
     // 2. Setup Cannon.js
