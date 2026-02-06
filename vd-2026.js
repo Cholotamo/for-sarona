@@ -1,196 +1,320 @@
 import * as THREE from "https://cdn.skypack.dev/three@0.129.0/build/three.module.js";
 import { GLTFLoader } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/loaders/GLTFLoader.js";
-import * as CANNON from "https://cdn.skypack.dev/cannon-es@0.19.0";
+import * as CANNON from 'https://cdn.skypack.dev/cannon-es';
 
-// --- Scene Setup ---
-const scene = new THREE.Scene();
+// --- Configuration ---
+const CONFIG = {
+    cameraHeight: 30, // Distance of camera from floor
+    viewSize: 20,     // Approximate width of view in world units (calculated later)
+    gravityScale: 20,  // Multiplier for tilt-to-gravity force
+    floorSize: 100,
+    wallThickness: 2,
+    objName: 'heart'
+};
 
-// 1. CAMERA FIX: Moved Z from 200 to 400 to zoom out (Top-down view feel)
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.z = 1200; 
+// --- Globals ---
+let scene, camera, renderer;
+let world; // Physics world
+let lastTime;
+let heartBody, heartMesh;
+const timeStep = 1 / 60;
 
-const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.getElementById("container3D").appendChild(renderer.domElement);
+// Materials
+let physicsMaterial;
 
-// Lights
-const topLight = new THREE.DirectionalLight(0xffffff, 1.5);
-topLight.position.set(100, 100, 200);
-topLight.castShadow = true;
-scene.add(topLight);
+// Screen Bounds (World Units)
+let screenBounds = { top: 0, bottom: 0, left: 0, right: 0 };
 
-const ambientLight = new THREE.AmbientLight(0x333333, 4);
-scene.add(ambientLight);
+async function init() {
+    // 1. Setup Three.js
+    scene = new THREE.Scene();
+    scene.background = null; // Transparent background for existing CSS background
 
-// --- Physics Setup ---
-const world = new CANNON.World();
-world.gravity.set(0, 0, 0); // Start with zero gravity (flat table)
-world.broadphase = new CANNON.NaiveBroadphase();
-world.solver.iterations = 10;
+    // Top-down camera setup (looking -Y)
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+    camera.position.set(0, CONFIG.cameraHeight, 0);
+    camera.lookAt(0, 0, 0);
 
-// Physics Materials
-const wallMaterial = new CANNON.Material('wall');
-const heartMaterial = new CANNON.Material('heart');
-const heartContactMaterial = new CANNON.ContactMaterial(wallMaterial, heartMaterial, {
-  friction: 0.1,    
-  restitution: 0.4, // Bounciness
-});
-world.addContactMaterial(heartContactMaterial);
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.getElementById("container3D").appendChild(renderer.domElement);
 
-// --- Boundaries (The Box) ---
-const walls = {};
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
 
-function createWall(name) {
-    const body = new CANNON.Body({ mass: 0, material: wallMaterial });
-    body.addShape(new CANNON.Plane());
-    world.addBody(body);
-    walls[name] = body;
-    return body;
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 20, 10);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    scene.add(dirLight);
+
+    // 2. Setup Cannon.js
+    world = new CANNON.World({
+        gravity: new CANNON.Vec3(0, -10, 0), // Initial gravity (Earth-like)
+    });
+    physicsMaterial = new CANNON.Material('physics');
+
+    // Friction/Bounce contact material
+    const physics_physics = new CANNON.ContactMaterial(physicsMaterial, physicsMaterial, {
+        friction: 0.3,
+        restitution: 0.5, // Bounciness
+    });
+    world.addContactMaterial(physics_physics);
+
+    // 3. Create Objects
+    calculateScreenBounds();
+    createFloor();
+    createWalls();
+    await loadModel(); // Load heart
+
+    // 4. Events
+    window.addEventListener("resize", onWindowResize);
+
+    // Start loop
+    lastTime = performance.now();
+    animate();
 }
 
-createWall('top');
-createWall('bottom');
-createWall('left');
-createWall('right');
-createWall('floor'); // The "Table" surface behind the object
-createWall('ceiling'); // Invisible glass in front (so it doesn't hit the camera)
-
-function updateBoundaries() {
-    // Calculate the visible width/height at the object's depth (0)
-    const distance = camera.position.z;
+function calculateScreenBounds() {
+    // Calculate visible width/height at floor level (y=0) given camera height
+    // tan(fov/2) = (height/2) / dist
     const vFOV = THREE.MathUtils.degToRad(camera.fov);
-    const visibleHeight = 2 * Math.tan(vFOV / 2) * distance;
+    const visibleHeight = 2 * Math.tan(vFOV / 2) * CONFIG.cameraHeight;
     const visibleWidth = visibleHeight * camera.aspect;
 
-    const halfW = visibleWidth / 2;
-    const halfH = visibleHeight / 2;
+    screenBounds = {
+        top: -visibleHeight / 2,
+        bottom: visibleHeight / 2,
+        left: -visibleWidth / 2,
+        right: visibleWidth / 2
+    };
 
-    // Position Walls exactly at screen edges
-    walls['right'].position.set(halfW, 0, 0);
-    walls['right'].quaternion.setFromEuler(0, -Math.PI / 2, 0);
-
-    walls['left'].position.set(-halfW, 0, 0);
-    walls['left'].quaternion.setFromEuler(0, Math.PI / 2, 0);
-
-    walls['top'].position.set(0, halfH, 0);
-    walls['top'].quaternion.setFromEuler(Math.PI / 2, 0, 0);
-
-    walls['bottom'].position.set(0, -halfH, 0);
-    walls['bottom'].quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-
-    // 2. Z-AXIS SANDWICH (The "Glass Panes")
-    // This keeps the object from falling "off" the table depth-wise
-    
-    // Back plane (Table surface) - slightly behind z=0
-    walls['floor'].position.set(0, 0, -30);
-    walls['floor'].quaternion.setFromEuler(0, 0, 0);
-
-    // Front plane (Glass cover) - slightly in front of z=0
-    walls['ceiling'].position.set(0, 0, 30); 
-    walls['ceiling'].quaternion.setFromEuler(-Math.PI, 0, 0); 
+    // Adjust config for walls
+    console.log("Calculated Bounds:", screenBounds);
 }
 
-// --- The Heart Object ---
-let renderMesh;
-let physicsBody;
-const loader = new GLTFLoader();
+function createFloor() {
+    // Visual Floor (Shadow receiver only)
+    const floorGeo = new THREE.PlaneGeometry(CONFIG.floorSize, CONFIG.floorSize);
+    const floorMat = new THREE.ShadowMaterial({ opacity: 0.3 }); // Only show shadows
+    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.receiveShadow = true;
+    scene.add(floorMesh);
 
-loader.load(`./models/heart/scene.gltf`, (gltf) => {
-    renderMesh = gltf.scene;
-    // Scale slightly smaller since camera is further back, 
-    // but large enough to look good
-    renderMesh.scale.set(15, 15, 15); 
-    scene.add(renderMesh);
-
-    // Physics Box
-    const boxShape = new CANNON.Box(new CANNON.Vec3(10, 10, 5)); 
-    
-    physicsBody = new CANNON.Body({
-        mass: 10,
-        material: heartMaterial,
-        shape: boxShape,
-        angularDamping: 0.6,
-        linearDamping: 0.5
+    // Physics Floor
+    const floorBody = new CANNON.Body({
+        type: CANNON.Body.STATIC,
+        shape: new CANNON.Plane(),
+        material: physicsMaterial
     });
-    
-    physicsBody.position.set(0, 0, 0);
-    world.addBody(physicsBody);
+    floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    world.addBody(floorBody);
+}
 
-    updateBoundaries();
-});
+function createWalls() {
+    // We add 4 static boxes around the screen bounds
+    const wallHeight = 10;
+    const thickness = CONFIG.wallThickness;
 
-// --- Tabletop Motion Logic ---
-function enableMotion() {
-    window.addEventListener("deviceorientation", (e) => {
-        if(!world) return;
+    const walls = [
+        // Top (-Z)
+        {
+            pos: [0, wallHeight / 2, screenBounds.top - thickness / 2],
+            size: [screenBounds.right * 2 + 10, wallHeight, thickness]
+        },
+        // Bottom (+Z)
+        {
+            pos: [0, wallHeight / 2, screenBounds.bottom + thickness / 2],
+            size: [screenBounds.right * 2 + 10, wallHeight, thickness]
+        },
+        // Left (-X)
+        {
+            pos: [screenBounds.left - thickness / 2, wallHeight / 2, 0],
+            size: [thickness, wallHeight, screenBounds.bottom * 2 + 10]
+        },
+        // Right (+X)
+        {
+            pos: [screenBounds.right + thickness / 2, wallHeight / 2, 0],
+            size: [thickness, wallHeight, screenBounds.bottom * 2 + 10]
+        },
+    ];
 
-        // Gravity Strength
-        const G = 150; 
+    walls.forEach(w => {
+        const shape = new CANNON.Box(new CANNON.Vec3(w.size[0] / 2, w.size[1] / 2, w.size[2] / 2));
+        const body = new CANNON.Body({
+            mass: 0, // static
+            material: physicsMaterial
+        });
+        body.addShape(shape);
+        body.position.set(...w.pos);
+        world.addBody(body);
 
-        // 3. TABLETOP MAPPING
-        // Gamma (Left/Right tilt): -90 to 90
-        // Beta (Front/Back tilt): -180 to 180 (0 is flat on table)
-
-        const xTilt = (e.gamma || 0); // Left/Right
-        const yTilt = (e.beta || 0);  // Front/Back
-
-        // Calculate gravity based on tilt
-        // If we tilt left (gamma negative), gravity goes left (negative X)
-        const gravX = (xTilt / 45) * G;
-        
-        // If we tilt "Away" (top of phone goes down), Beta usually becomes negative.
-        // We want the object to move UP the screen (Positive Y).
-        // So we flip the sign of Beta.
-        const gravY = -(yTilt / 45) * G;
-
-        // Apply to world
-        // We keep Z gravity at 0 (or slight push back) so it slides on the "table"
-        world.gravity.set(gravX, gravY, -10); 
+        // Debug Visuals (Optional - uncomment to see walls)
+        // const mesh = new THREE.Mesh(new THREE.BoxGeometry(...w.size), new THREE.MeshBasicMaterial({color: 0xff0000, wireframe: true}));
+        // mesh.position.copy(body.position);
+        // scene.add(mesh);
     });
 }
 
-// Permissions
-if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
-    const btn = document.getElementById("motionBtn");
-    btn.style.display = "block";
-    btn.addEventListener("click", async () => {
-        const permission = await DeviceMotionEvent.requestPermission();
-        if (permission === "granted") {
-            enableMotion();
-            btn.remove();
+function loadModel() {
+    return new Promise(resolve => {
+        const loader = new GLTFLoader();
+        loader.load(`./models/${CONFIG.objName}/scene.gltf`, (gltf) => {
+            heartMesh = gltf.scene;
+
+            // Normalize scale (heuristic: fit within 2 unit sphere)
+            const box = new THREE.Box3().setFromObject(heartMesh);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 2.0 / maxDim;
+            heartMesh.scale.set(scale, scale, scale);
+
+            // Center the mesh pivot
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            // We'll wrap it in a parent if offset is needed, but typically simple setPosition works relative to physics body
+            // For simplicity, we assume center of mass is roughly origin locally or we adjust visual mesh offset.
+            // Let's just shadow-enable
+            heartMesh.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            scene.add(heartMesh);
+
+            // Create Physics Body
+            // Sphere radius approx 1.0 (matching our visual scale normalization)
+            const radius = 1.0;
+            const shape = new CANNON.Sphere(radius);
+
+            heartBody = new CANNON.Body({
+                mass: 5,
+                material: physicsMaterial,
+                linearDamping: 0.1,
+                angularDamping: 0.1
+            });
+            heartBody.addShape(shape);
+            heartBody.position.set(0, 5, 0); // Start in air
+            world.addBody(heartBody);
+
+            resolve();
+        });
+    });
+}
+
+// --- Control Logic ---
+function handleDeviceOrientation(e) {
+    if (!heartBody) return;
+
+    // Beta: Front-to-back tilt [-180, 180] (x-axis)
+    // Gamma: Left-to-right tilt [-90, 90] (y-axis)
+
+    // We Map:
+    // Beta -> Z Gravity (Tilting phone forward (top away) should roll "up" screen (-Z))
+    // Gamma -> X Gravity (Tilting phone right should roll right (+X))
+
+    const beta = e.beta || 0;
+    const gamma = e.gamma || 0;
+
+    // Clamp for usability
+    const maxTilt = 45;
+    const clampedBeta = Math.max(-maxTilt, Math.min(maxTilt, beta));
+    const clampedGamma = Math.max(-maxTilt, Math.min(maxTilt, gamma));
+
+    // Normalize -1 to 1
+    const xRatio = clampedGamma / maxTilt;
+    const zRatio = clampedBeta / maxTilt;
+
+    // Gravity Vector
+    // Keep a strong -Y component so it stays on floor
+    const gravityY = -15;
+    const gravityX = xRatio * CONFIG.gravityScale;
+    const gravityZ = zRatio * CONFIG.gravityScale;
+
+    // "Tilt cylinder Away (top down)" -> Beta is positive?
+    // Usually:
+    // Phone flat: Beta = 0
+    // Tilt Top Away (forward): Beta ranges 0 -> 90. We want object to roll -Z (Up).
+    // So +Beta -> -Z force.
+
+    world.gravity.set(gravityX, gravityY, -gravityZ);
+}
+
+// Enable Motion Permission (iOS 13+)
+const btn = document.getElementById("motionBtn");
+if (btn) {
+    // Only show if needed (handled in HTML/CSS mostly, but logic here)
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+        btn.style.display = "block";
+        btn.addEventListener("click", async () => {
+            try {
+                const response = await DeviceMotionEvent.requestPermission();
+                if (response === 'granted') {
+                    window.addEventListener('deviceorientation', handleDeviceOrientation);
+                    btn.style.display = 'none';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    } else {
+        // Non-iOS or older
+        window.addEventListener('deviceorientation', handleDeviceOrientation);
+        btn.style.display = 'none';
+
+        // Debug hook for desktop testing (Mouse position -> gravity)
+        if (!('ontouchstart' in window)) {
+            window.addEventListener('mousemove', (e) => {
+                const x = (e.clientX / window.innerWidth) * 2 - 1;
+                const y = (e.clientY / window.innerHeight) * 2 - 1;
+                // Move Right (x>0) -> Gravity +X
+                // Move Up (y<0) -> Gravity -Z
+                world.gravity.set(x * 25, -10, y * 25);
+            });
         }
-    });
-} else {
-    enableMotion();
-}
-
-// --- Animate ---
-const clock = new THREE.Clock();
-let oldElapsedTime = 0;
-
-function animate() {
-    requestAnimationFrame(animate);
-
-    const elapsedTime = clock.getElapsedTime();
-    const deltaTime = elapsedTime - oldElapsedTime;
-    oldElapsedTime = elapsedTime;
-
-    world.step(1 / 60, deltaTime, 3);
-
-    if (renderMesh && physicsBody) {
-        renderMesh.position.copy(physicsBody.position);
-        renderMesh.quaternion.copy(physicsBody.quaternion);
     }
-
-    renderer.render(scene, camera);
 }
 
-// Resize
-window.addEventListener("resize", function () {
+function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    updateBoundaries();
-});
 
-animate();
+    // Recalculate walls if screen aspect changes significantly
+    // Removing old walls and adding new ones is complex efficiently, 
+    // for this quick demo we can just reload or ignore small resizes.
+    // Ideally: remove bodies, recalc, add bodies.
+    // For now, let's just update bounds variable so new logic maps correctly if needed.
+    calculateScreenBounds();
+}
+
+function animate(time) {
+    requestAnimationFrame(animate);
+
+    if (lastTime === undefined) lastTime = time;
+    const dt = (time - lastTime) / 1000;
+
+    // Step physics
+    // fixed time step is better for stability
+    world.fixedStep();
+
+    // Sync Visuals
+    if (heartBody && heartMesh) {
+        heartMesh.position.copy(heartBody.position);
+        heartMesh.quaternion.copy(heartBody.quaternion);
+    }
+
+    renderer.render(scene, camera);
+    lastTime = time;
+}
+
+// Start
+init();
