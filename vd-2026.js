@@ -165,34 +165,50 @@ function loadModel() {
     return new Promise(resolve => {
         const loader = new GLTFLoader();
         loader.load(`./models/${CONFIG.objName}/scene.gltf`, (gltf) => {
-            heartMesh = gltf.scene;
+            const rawMesh = gltf.scene;
 
             // Normalize scale (heuristic: fit within 2 unit sphere)
-            const box = new THREE.Box3().setFromObject(heartMesh);
+            const box = new THREE.Box3().setFromObject(rawMesh);
             const size = new THREE.Vector3();
             box.getSize(size);
             const maxDim = Math.max(size.x, size.y, size.z);
             const scale = 2.0 / maxDim;
-            heartMesh.scale.set(scale, scale, scale);
+            rawMesh.scale.set(scale, scale, scale);
 
-            // Center the mesh pivot
+            // Re-calculate box after scale to get correct center
+            box.setFromObject(rawMesh);
             const center = new THREE.Vector3();
             box.getCenter(center);
-            // We'll wrap it in a parent if offset is needed, but typically simple setPosition works relative to physics body
-            // For simplicity, we assume center of mass is roughly origin locally or we adjust visual mesh offset.
-            // Let's just shadow-enable
-            heartMesh.traverse(child => {
+
+            // Create a Container Group to be our Pivot
+            const visualRoot = new THREE.Group();
+
+            // Move rawMesh so its center is at (0,0,0) of the parent Group
+            rawMesh.position.x = -center.x;
+            rawMesh.position.y = -center.y;
+            rawMesh.position.z = -center.z;
+
+            // Enable shadows
+            rawMesh.traverse(child => {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
                 }
             });
 
-            scene.add(heartMesh);
+            visualRoot.add(rawMesh);
+
+            // Add Debug Wireframe Sphere (Visualizing the collider)
+            const radius = 1.0;
+            const debugGeo = new THREE.SphereGeometry(radius, 16, 16);
+            const debugMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 });
+            const debugMesh = new THREE.Mesh(debugGeo, debugMat);
+            visualRoot.add(debugMesh);
+
+            scene.add(visualRoot);
+            heartMesh = visualRoot; // The animation loop will sync this group to physics
 
             // Create Physics Body
-            // Sphere radius approx 1.0 (matching our visual scale normalization)
-            const radius = 1.0;
             const shape = new CANNON.Sphere(radius);
 
             heartBody = new CANNON.Body({
@@ -237,15 +253,36 @@ function handleDeviceOrientation(e) {
     // Keep a strong -Y component so it stays on floor
     const gravityY = -15;
     const gravityX = xRatio * CONFIG.gravityScale;
+
+    // Inverted Z based on user feedback
+    // "Tilt Away" (Positive Beta) was rolling "Down" (+Z) -> We want it to roll "Up" (-Z)
+    // So Positive Beta should produce -Z Gravity. 
+    // Previous Code: `world.gravity.set(..., -gravityZ)` where gravityZ = zRatio*Scale.
+    // If zRatio is +, gravity is -Z. This SHOULD have worked for "Up".
+    // If user says "it rolls to bottom" (+Z), then my previous logic resulted in +Z force.
+    // So let's flip the sign of the Z component passed to set().
+    // If Beta is +, we want -Z force.
+    // Let's try flipping the sign.
     const gravityZ = zRatio * CONFIG.gravityScale;
 
-    // "Tilt cylinder Away (top down)" -> Beta is positive?
-    // Usually:
-    // Phone flat: Beta = 0
-    // Tilt Top Away (forward): Beta ranges 0 -> 90. We want object to roll -Z (Up).
-    // So +Beta -> -Z force.
+    // If "Tilt Away" (Beta > 0) -> we want -Z force.
+    // If "Tilt Inward" (Beta < 0) -> we want +Z force.
+    // Let's explicitly set the signs to avoid confusion.
 
-    world.gravity.set(gravityX, gravityY, -gravityZ);
+    // User reported: "Tilting phone away... rolls to bottom (+Z)".
+    // So currently Beta > 0 => Force +Z. 
+    // We want Beta > 0 => Force -Z.
+    // So simply flipping the sign of the Z argument fix it.
+
+    world.gravity.set(gravityX, gravityY, gravityZ);
+    // Wait, if gravityZ is positive (Beta > 0), passing it as +Z moves it to Bottom.
+    // Wait, previous code was `world.gravity.set(gravityX, gravityY, -gravityZ);`
+    // So Beta > 0 -> -Gravity -> Force -Z (Up).
+    // User said that rolled to Bottom. That implies either Beta IS NEGATIVE when tilting away (Android vs iOS difference?) or Camera is flipped.
+    // Regardless, if it was going wrong way, we just flip the sign.
+    // Previous: -gravityZ. New: +gravityZ.
+    // Let's just use `gravityZ` directly if it was inverted before.
+
 }
 
 // Enable Motion Permission (iOS 13+)
@@ -276,8 +313,8 @@ if (btn) {
                 const x = (e.clientX / window.innerWidth) * 2 - 1;
                 const y = (e.clientY / window.innerHeight) * 2 - 1;
                 // Move Right (x>0) -> Gravity +X
-                // Move Up (y<0) -> Gravity -Z
-                world.gravity.set(x * 25, -10, y * 25);
+                // Move Up (y<0) -> Gravity -Z (Roll Up)
+                world.gravity.set(x * 25, -15, y * 25);
             });
         }
     }
@@ -287,12 +324,6 @@ function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-
-    // Recalculate walls if screen aspect changes significantly
-    // Removing old walls and adding new ones is complex efficiently, 
-    // for this quick demo we can just reload or ignore small resizes.
-    // Ideally: remove bodies, recalc, add bodies.
-    // For now, let's just update bounds variable so new logic maps correctly if needed.
     calculateScreenBounds();
 }
 
@@ -303,17 +334,15 @@ function animate(time) {
     const dt = (time - lastTime) / 1000;
 
     // Step physics
-    // fixed time step is better for stability
     world.fixedStep();
 
     // Sync Visuals
     if (heartBody && heartMesh) {
+        // heartMesh is now our visualRoot group
         heartMesh.position.copy(heartBody.position);
         heartMesh.quaternion.copy(heartBody.quaternion);
     }
 
-    renderer.render(scene, camera);
-    lastTime = time;
 }
 
 // Start
