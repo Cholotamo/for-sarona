@@ -9,7 +9,8 @@ const CONFIG = {
     gravityScale: 20,  // Multiplier for tilt-to-gravity force
     floorSize: 100,
     wallThickness: 2,
-    objName: 'heart'
+    objName: 'heart',
+    objName2: 'photoframe'
 };
 
 // --- Globals ---
@@ -181,7 +182,77 @@ function loadModel() {
 
             resolve();
         });
+
+        // Load Photoframe
+        const loader2 = new GLTFLoader();
+        loader2.load(`./models/${CONFIG.objName2}/scene.gltf`, (gltf) => {
+            const rawScene = gltf.scene;
+            spawnPhotoframe(rawScene, 8, 20, 8);
+        });
     });
+}
+
+function spawnPhotoframe(sourceScene, x, y, z) {
+    const rawMesh = sourceScene.clone(true);
+
+    // Normalize scale
+    const box = new THREE.Box3().setFromObject(rawMesh);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    if (maxDim === 0) return;
+
+    // Scale similarly to hearts but maybe slightly different? Let's keep it consistent for now or adjust
+    const scale = 8.0 / maxDim; // Slightly larger feel for a frame
+    rawMesh.scale.set(scale, scale, scale);
+
+    // Re-calculate box after scale
+    box.setFromObject(rawMesh);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size); // Get final size for physics
+
+    const visualRoot = new THREE.Group();
+    rawMesh.position.x = -center.x;
+    rawMesh.position.y = -center.y;
+    rawMesh.position.z = -center.z;
+
+    rawMesh.traverse(child => {
+        if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+        }
+    });
+
+    visualRoot.add(rawMesh);
+
+    // Debug Wireframe (Box)
+    // const debugGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+    // const debugMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true });
+    // const debugMesh = new THREE.Mesh(debugGeo, debugMat);
+    // visualRoot.add(debugMesh);
+
+    scene.add(visualRoot);
+
+    // Physics Body - Box
+    // Cannon Box takes half-extents
+    const shape = new CANNON.Box(new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2));
+
+    const body = new CANNON.Body({
+        mass: 5,
+        material: physicsMaterial,
+        linearDamping: 0.1,
+        angularDamping: 0.1
+    });
+    body.addShape(shape);
+    body.position.set(x, y, z);
+
+    // Initial random rotation
+    body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+
+    world.addBody(body);
+    hearts.push({ mesh: visualRoot, body: body });
 }
 
 function spawnHeart(sourceScene, x, y, z) {

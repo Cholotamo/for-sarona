@@ -1,0 +1,11 @@
+Model Information:
+* title:	Photo Frame (Low Poly Speed Model)
+* source:	https://sketchfab.com/3d-models/photo-frame-low-poly-speed-model-3e6dc5d42e1a4e78a7bad4dac7754cb9
+* author:	TheoClarke (https://sketchfab.com/TheoClarke)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Photo Frame (Low Poly Speed Model)" (https://sketchfab.com/3d-models/photo-frame-low-poly-speed-model-3e6dc5d42e1a4e78a7bad4dac7754cb9) by TheoClarke (https://sketchfab.com/TheoClarke) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
