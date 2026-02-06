@@ -174,10 +174,10 @@ function loadModel() {
         loader.load(`./models/${CONFIG.objName}/scene.gltf`, (gltf) => {
             const rawScene = gltf.scene;
 
-            // Spawn 3 hearts at different positions
-            spawnHeart(rawScene, -2, 5, 0);
-            spawnHeart(rawScene, 0, 5, 2);
-            spawnHeart(rawScene, 2, 5, -2);
+            // Spawn 3 hearts at different positions (spread out for larger size)
+            spawnHeart(rawScene, -6, 15, 0);
+            spawnHeart(rawScene, 0, 15, 6);
+            spawnHeart(rawScene, 6, 15, -6);
 
             resolve();
         });
@@ -199,7 +199,8 @@ function spawnHeart(sourceScene, x, y, z) {
     // Safety check for empty model
     if (maxDim === 0) return;
 
-    const scale = 2.0 / maxDim;
+    // Scale 3x bigger (Base was 2.0 for radius 1, now 6.0 for radius 3)
+    const scale = 6.0 / maxDim;
     rawMesh.scale.set(scale, scale, scale);
 
     // Re-calculate box after scale
@@ -225,7 +226,7 @@ function spawnHeart(sourceScene, x, y, z) {
     visualRoot.add(rawMesh);
 
     // Debug Wireframe
-    const radius = 1.0;
+    const radius = 3.0;
     // User requested "3D Hexagon" -> Using Icosahedron (20 sides) for a tumbling effect
     const polyGeo = new THREE.IcosahedronGeometry(radius, 0);
     // const debugMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 });
