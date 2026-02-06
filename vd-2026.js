@@ -16,7 +16,7 @@ const CONFIG = {
 let scene, camera, renderer;
 let world; // Physics world
 let lastTime;
-let heartBody, heartMesh;
+let hearts = []; // Array of { mesh, body }
 const timeStep = 1 / 60;
 
 // Materials
@@ -172,70 +172,142 @@ function loadModel() {
     return new Promise(resolve => {
         const loader = new GLTFLoader();
         loader.load(`./models/${CONFIG.objName}/scene.gltf`, (gltf) => {
-            const rawMesh = gltf.scene;
+            const rawScene = gltf.scene;
 
-            // Normalize scale (heuristic: fit within 2 unit sphere)
-            const box = new THREE.Box3().setFromObject(rawMesh);
-            const size = new THREE.Vector3();
-            box.getSize(size);
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const scale = 2.0 / maxDim;
-            rawMesh.scale.set(scale, scale, scale);
-
-            // Re-calculate box after scale to get correct center
-            box.setFromObject(rawMesh);
-            const center = new THREE.Vector3();
-            box.getCenter(center);
-
-            // Create a Container Group to be our Pivot
-            const visualRoot = new THREE.Group();
-
-            // Move rawMesh so its center is at (0,0,0) of the parent Group
-            rawMesh.position.x = -center.x;
-            rawMesh.position.y = -center.y;
-            rawMesh.position.z = -center.z;
-
-            // Enable shadows
-            rawMesh.traverse(child => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                }
-            });
-
-            visualRoot.add(rawMesh);
-
-            // Add Debug Wireframe Sphere (Visualizing the collider)
-            const radius = 1.0;
-            // const debugGeo = new THREE.SphereGeometry(radius, 16, 16);
-            // const debugMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 });
-            // const debugMesh = new THREE.Mesh(debugGeo, debugMat);
-            // visualRoot.add(debugMesh);
-
-            scene.add(visualRoot);
-            heartMesh = visualRoot; // The animation loop will sync this group to physics
-
-            // Create Physics Body
-            const shape = new CANNON.Sphere(radius);
-
-            heartBody = new CANNON.Body({
-                mass: 5,
-                material: physicsMaterial,
-                linearDamping: 0.1,
-                angularDamping: 0.1
-            });
-            heartBody.addShape(shape);
-            heartBody.position.set(0, 5, 0); // Start in air
-            world.addBody(heartBody);
+            // Spawn 3 hearts at different positions
+            spawnHeart(rawScene, -2, 5, 0);
+            spawnHeart(rawScene, 0, 5, 2);
+            spawnHeart(rawScene, 2, 5, -2);
 
             resolve();
         });
     });
 }
 
+function spawnHeart(sourceScene, x, y, z) {
+    // Clone logic
+    const rawMesh = sourceScene.clone(true); // Is .clone() enough? standard Three.js clone is non-recursive for custom props but works for scene graph.
+    // However, we need to re-apply the scale/center logic or do it once on source.
+    // Let's do it per instance to be safe and robust.
+
+    // Normalize scale
+    const box = new THREE.Box3().setFromObject(rawMesh);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    // Safety check for empty model
+    if (maxDim === 0) return;
+
+    const scale = 2.0 / maxDim;
+    rawMesh.scale.set(scale, scale, scale);
+
+    // Re-calculate box after scale
+    box.setFromObject(rawMesh);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    // Create Pivot Group
+    const visualRoot = new THREE.Group();
+    rawMesh.position.x = -center.x;
+    rawMesh.position.y = -center.y;
+    rawMesh.position.z = -center.z;
+
+    // Shadows
+    rawMesh.traverse(child => {
+        if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            // Materials need to be cloned if we want to change them later, but for unique instances sharing material is fine.
+        }
+    });
+
+    visualRoot.add(rawMesh);
+
+    // Debug Wireframe
+    const radius = 1.0;
+    // User requested "3D Hexagon" -> Using Icosahedron (20 sides) for a tumbling effect
+    const polyGeo = new THREE.IcosahedronGeometry(radius, 0);
+    // const debugMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 });
+    // const debugMesh = new THREE.Mesh(polyGeo, debugMat);
+    // visualRoot.add(debugMesh);
+
+    scene.add(visualRoot);
+
+    // Physics Body - ConvexPolyhedron
+    // We need to convert the Three.js geometry to Cannon.js ConvexPolyhedron
+    const shape = createConvexPolyhedron(polyGeo);
+
+    const body = new CANNON.Body({
+        mass: 5,
+        material: physicsMaterial,
+        linearDamping: 0.1,
+        angularDamping: 0.1
+    });
+    body.addShape(shape);
+    body.position.set(x, y, z);
+    world.addBody(body);
+
+    hearts.push({ mesh: visualRoot, body: body });
+}
+
+function createConvexPolyhedron(geometry) {
+    const position = geometry.attributes.position;
+    const vertices = []; // CANNON.Vec3[]
+    const faces = [];    // number[][]
+
+    // 1. Identify Unique Vertices
+    // Map "x_y_z" -> unique index
+    const uniqueMap = new Map();
+    const indexRemap = []; // Old Index -> New Unique Index
+
+    for (let i = 0; i < position.count; i++) {
+        const x = position.getX(i);
+        const y = position.getY(i);
+        const z = position.getZ(i);
+
+        // Quantize to avoid floating point issues
+        const key = `${Math.round(x * 1000)}_${Math.round(y * 1000)}_${Math.round(z * 1000)}`;
+
+        if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, vertices.length);
+            vertices.push(new CANNON.Vec3(x, y, z));
+        }
+        indexRemap.push(uniqueMap.get(key));
+    }
+
+    // 2. Build Faces using remapped indices
+    // Helper to add face if valid (3 unique vertices)
+    const addFace = (a, b, c) => {
+        const ia = indexRemap[a];
+        const ib = indexRemap[b];
+        const ic = indexRemap[c];
+
+        if (ia !== ib && ib !== ic && ia !== ic) {
+            faces.push([ia, ib, ic]);
+        }
+    };
+
+    if (geometry.index) {
+        for (let i = 0; i < geometry.index.count; i += 3) {
+            addFace(
+                geometry.index.array[i],
+                geometry.index.array[i + 1],
+                geometry.index.array[i + 2]
+            );
+        }
+    } else {
+        for (let i = 0; i < position.count; i += 3) {
+            addFace(i, i + 1, i + 2);
+        }
+    }
+
+    return new CANNON.ConvexPolyhedron({ vertices, faces });
+}
+
 // --- Control Logic ---
 function handleDeviceOrientation(e) {
-    if (!heartBody) return;
+    // Removed specific body check, gravity is global
 
     // Beta: Front-to-back tilt [-180, 180] (x-axis)
     // Gamma: Left-to-right tilt [-90, 90] (y-axis)
@@ -321,15 +393,13 @@ function animate(time) {
     if (lastTime === undefined) lastTime = time;
     const dt = (time - lastTime) / 1000;
 
-    // Step physics
-    // fixed time step is better for stability
     world.fixedStep();
 
     // Sync Visuals
-    if (heartBody && heartMesh) {
-        heartMesh.position.copy(heartBody.position);
-        heartMesh.quaternion.copy(heartBody.quaternion);
-    }
+    hearts.forEach(item => {
+        item.mesh.position.copy(item.body.position);
+        item.mesh.quaternion.copy(item.body.quaternion);
+    });
 
     renderer.render(scene, camera);
     lastTime = time;
